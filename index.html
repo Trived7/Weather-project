@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Weather App</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="main.css" type="text/css"> <!--Scraps and holds my css file-->
+</head>
+<body>
+  <div class="app">
+    <div class="header-controls">
+      <h1><i class="fas fa-cloud-sun"></i> Weather App</h1>
+      <button class="theme-toggle" id="theme-toggle"> <!--dark and white mode button-->
+        <i class="fas fa-moon"></i>
+      </button>
+    </div>
+    
+    <!--Search bar code-->
+    <div class="search-container">
+      <input type="text" id="city" placeholder="Enter city name...">
+      <button class="search-btn" onclick="getWeather()"><i class="fas fa-search"></i></button>
+      <button class="geolocation-btn" onclick="getLocation()"><i class="fas fa-location-arrow"></i></button>
+    </div>
+    
+    <div class="error-message" id="error-message"></div>
+
+    <div id="loading">
+      <div class="spinner"></div>
+      <p>Fetching Weather Data...</p>
+    </div>
+
+    <div class="weather-card" id="weather-card">
+      <div class="location">
+        <i class="fas fa-map-marker-alt"></i>
+        <h2 id="location-name">Loading...</h2>
+      </div>
+      
+      <div class="weather-main">
+        <div class="temperature" id="temperature">0°C</div>
+        <div class="weather-icon" id="weather-icon"><i class="fas fa-sun"></i></div>
+      </div>
+      
+      <div class="weather-description" id="weather-description">Clear sky</div>
+      
+      <div class="weather-details">
+        <div class="detail">
+          <i class="fas fa-temperature-high"></i>
+          <span>Feels Like</span>
+          <span id="feels-like">0°C</span>
+        </div>
+        <div class="detail">
+          <i class="fas fa-tint"></i>
+          <span>Humidity</span>
+          <span id="humidity">0%</span>
+        </div>
+        <div class="detail">
+          <i class="fas fa-wind"></i>
+          <span>Wind Speed</span>
+          <span id="wind-speed">0 m/s</span>
+        </div>
+        <div class="detail">
+          <i class="fas fa-compress-alt"></i>
+          <span>Pressure</span>
+          <span id="pressure">0 hPa</span>
+        </div>
+      </div>
+    </div>
+    
+    <div class="forecast-container" id="forecast-container">
+      <h3 class="forecast-title">5-Day Forecast</h3>
+      <div class="forecast-cards" id="forecast-cards">
+        <!-- Forecast cards will be inserted here -->
+      </div>
+    </div>
+    
+    <div class="recent-searches" id="recent-searches">
+      <h3 class="recent-title">Recent Searches</h3>
+      <div class="search-history" id="search-history"></div>
+    </div>
+  </div>
+  
+  <script>
+    // DOM elements
+    const cityInput = document.getElementById('city');
+    const errorMessage = document.getElementById('error-message');
+    const weatherCard = document.getElementById('weather-card');
+    const loadingBox = document.getElementById('loading');
+    const recentSearches = document.getElementById('recent-searches');
+    const searchHistory = document.getElementById('search-history');
+    const forecastContainer = document.getElementById('forecast-container');
+    const forecastCards = document.getElementById('forecast-cards');
+    const themeToggle = document.getElementById('theme-toggle');
+    
+    // Weather icons mapping
+    const weatherIcons = {
+        '01d': 'fas fa-sun',
+        '01n': 'fas fa-moon',
+        '02d': 'fas fa-cloud-sun',
+        '02n': 'fas fa-cloud-moon',
+        '03d': 'fas fa-cloud',
+        '03n': 'fas fa-cloud',
+        '04d': 'fas fa-cloud',
+        '04n': 'fas fa-cloud',
+        '09d': 'fas fa-cloud-showers-heavy',
+        '09n': 'fas fa-cloud-showers-heavy',
+        '10d': 'fas fa-cloud-sun-rain',
+        '10n': 'fas fa-cloud-moon-rain',
+        '11d': 'fas fa-bolt',
+        '11n': 'fas fa-bolt',
+        '13d': 'fas fa-snowflake',
+        '13n': 'fas fa-snowflake',
+        '50d': 'fas fa-smog',
+        '50n': 'fas fa-smog'
+    };
+    
+    // Recent searches stores with this function/line
+    let recentCities = JSON.parse(localStorage.getItem('recentCities')) || [];
+    
+    // Theme state
+    let isDarkMode = localStorage.getItem('darkMode') === 'true';
+    
+    // Initializes the app (initially wanted to create a app but dropped it)
+    function initApp() {
+        // Set initial theme
+        if (isDarkMode) {
+            document.body.classList.add('dark-mode');
+            themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+        }
+        
+        // it Load recent searches if there are any
+        if (recentCities.length > 0) {
+            updateSearchHistory();
+            recentSearches.style.display = 'block';
+        }
+        
+        // Load last searched city if it's available
+        const lastCity = localStorage.getItem('lastCity');
+        if (lastCity) {
+            cityInput.value = lastCity;
+            getWeather();
+        }
+    }
+    
+    // Toggle theme function
+    themeToggle.addEventListener('click', () => {
+        isDarkMode = !isDarkMode;
+        document.body.classList.toggle('dark-mode');
+        
+        if (isDarkMode) {
+            themeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+        } else {
+            themeToggle.innerHTML = '<i class="fas fa-moon"></i>';
+        }
+        
+        localStorage.setItem('darkMode', isDarkMode);
+    });
+    
+    // Validate city name
+    function isValidCityName(name) {
+        return /^[A-Za-z\s-,]+$/.test(name);
+    }
+    
+    // Format input to remove invalid characters
+    cityInput.addEventListener("input", function() {
+        this.value = this.value.replace(/[^A-Za-z\s-,]/g, "").replace(/\s+/g, " ");
+        this.classList.remove("error");
+        errorMessage.textContent = "";
+    });
+    
+    // Support for Enter key (keyboard)
+    cityInput.addEventListener("keydown", function(event) {
+        if (event.key === "Enter") {
+            event.preventDefault();
+            getWeather();
+        }
+    });
+    
+    // Get weather by geolocation
+    function getLocation() {
+        if (navigator.geolocation) {
+            loadingBox.style.display = "block";
+            errorMessage.textContent = "";
+            weatherCard.style.display = "none";
+            forecastContainer.style.display = "none";
+            
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    getWeatherByCoords(lat, lon);
+                },
+                error => {
+                    loadingBox.style.display = "none";
+                    errorMessage.textContent = "Geolocation failed: " + error.message;
+                }
+            );
+        } else {
+            errorMessage.textContent = "Geolocation is not supported by this browser.";
+        }
+    }
+    
+    // Get weather by coordinates ( i have added location fetcher on map, if want...)
+    async function getWeatherByCoords(lat, lon) {
+        const apiKey = "4ba986d674c00281397c94855a8f604b";
+        const currentUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+        const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${apiKey}&units=metric`;
+        
+        try {
+            // Fetches current weather
+            const currentResponse = await fetch(currentUrl);
+            const currentData = await currentResponse.json();
+            
+            if (currentData.cod !== 200) {
+                throw new Error("City not found");
+            }
+            
+            // Fetches 5-day forecast
+            const forecastResponse = await fetch(forecastUrl);
+            const forecastData = await forecastResponse.json();
+            
+            if (forecastData.cod !== "200") {
+                throw new Error("Forecast not available");
+            }
+            
+            displayWeather(currentData);
+            displayForecast(forecastData);
+            addToRecent(currentData.name);
+        } catch (error) {
+            errorMessage.textContent = "Error fetching weather data: " + error.message;
+        } finally {
+            loadingBox.style.display = "none";
+        }
+    }
+    
+    // Main function to get the weather data
+    async function getWeather() {
+        const city = cityInput.value.trim();
+        
+        // Reset previous results
+        errorMessage.textContent = "";
+        weatherCard.style.display = "none";
+        forecastContainer.style.display = "none";
+        
+        // Validates input
+        if (city === "") {
+            errorMessage.textContent = "Please enter a city name!";
+            cityInput.classList.add("error");
+            return;
+        }
+        // if requirements not met show this 
+        if (!isValidCityName(city)) {
+            errorMessage.textContent = "Invalid city name. Use only letters, spaces, hyphens, and commas.";
+            cityInput.classList.add("error");
+            return;
+        }
+        
+        // Shows loading state
+        loadingBox.style.display = "block";
+        
+        try {
+            const apiKey = "YOUR_API_KEY_HERE";
+            const currentUrl = `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${apiKey}&units=metric`;
+            const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${apiKey}&units=metric`;
+            
+            // Fetches current weather (don't get confused here, this is about error while it loads, previous one is for location on map)
+            const currentResponse = await fetch(currentUrl);
+            const currentData = await currentResponse.json();
+            
+            if (currentData.cod !== 200) {
+                throw new Error(currentData.message || "City not found");
+            }
+            
+            // Fetches 5-day forecast
+            const forecastResponse = await fetch(forecastUrl);
+            const forecastData = await forecastResponse.json();
+            
+            if (forecastData.cod !== "200") {
+                throw new Error("Forecast not available");
+            }
+            
+            displayWeather(currentData);
+            displayForecast(forecastData);
+            addToRecent(city);
+            localStorage.setItem('lastCity', city);
+        } catch (error) {
+            errorMessage.textContent = "Error: " + error.message;
+        } finally {
+            loadingBox.style.display = "none";
+        }
+    }
+    
+    // Displays weather data
+    function displayWeather(data) {
+        document.getElementById('location-name').textContent = `${data.name}, ${data.sys.country}`;
+        document.getElementById('temperature').textContent = `${Math.round(data.main.temp)}°C`;
+        document.getElementById('weather-description').textContent = 
+            data.weather[0].description.charAt(0).toUpperCase() + data.weather[0].description.slice(1);
+        document.getElementById('feels-like').textContent = `${Math.round(data.main.feels_like)}°C`;
+        document.getElementById('humidity').textContent = `${data.main.humidity}%`;
+        document.getElementById('wind-speed').textContent = `${data.wind.speed} m/s`;
+        document.getElementById('pressure').textContent = `${data.main.pressure} hPa`;
+        
+        // Sets weather icon
+        const iconCode = data.weather[0].icon;
+        const iconElement = document.getElementById('weather-icon');
+        iconElement.innerHTML = `<i class="${weatherIcons[iconCode] || 'fas fa-cloud'}"></i>`;
+        
+        // Show weather card
+        weatherCard.style.display = "block";
+    }
+    
+    // Display 5-day forecast
+    function displayForecast(data) {
+        // Clear previous forecast
+        forecastCards.innerHTML = '';
+        
+        // Group forecast by day
+        const dailyForecast = {};
+        
+        data.list.forEach(item => {
+            const date = new Date(item.dt * 1000);
+            const day = date.toLocaleDateString('en-US', { weekday: 'short' });
+            const dayFull = date.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+            
+            if (!dailyForecast[dayFull]) {
+                dailyForecast[dayFull] = {
+                    day: day,
+                    date: dayFull,
+                    temps: [],
+                    icons: [],
+                    descriptions: []
+                };
+            }
+            
+            dailyForecast[dayFull].temps.push(item.main.temp);
+            dailyForecast[dayFull].icons.push(item.weather[0].icon);
+            dailyForecast[dayFull].descriptions.push(item.weather[0].description);
+        });
+        
+        // This Creates forecast cards for the next 5 days
+        let count = 0;
+        for (const date in dailyForecast) {
+            if (count >= 5) break;
+            
+            const dayData = dailyForecast[date];
+            const highTemp = Math.round(Math.max(...dayData.temps));
+            const lowTemp = Math.round(Math.min(...dayData.temps));
+            
+            // Using this to get the most frequent icon for the day
+            const iconCounts = {};
+            let mostFrequentIcon = dayData.icons[0];
+            let maxCount = 1;
+            
+            for (const icon of dayData.icons) {
+                iconCounts[icon] = (iconCounts[icon] || 0) + 1;
+                if (iconCounts[icon] > maxCount) {
+                    mostFrequentIcon = icon;
+                    maxCount = iconCounts[icon];
+                }
+            }
+            
+            const forecastCard = document.createElement('div');
+            forecastCard.className = 'forecast-card';
+            forecastCard.innerHTML = `
+                <div class="forecast-day">${dayData.day}</div>
+                <div class="forecast-date">${date.split(', ')[1]}</div>
+                <div class="forecast-icon"><i class="${weatherIcons[mostFrequentIcon] || 'fas fa-cloud'}"></i></div>
+                <div class="forecast-temp">
+                    <span class="forecast-high">${highTemp}°</span>
+                    <span class="forecast-low">${lowTemp}°</span>
+                </div>
+            `;
+            
+            forecastCards.appendChild(forecastCard);
+            count++;
+        }
+        
+        // Show forecast container
+        forecastContainer.style.display = "block";
+    }
+    
+    // Add city to recent searches
+    function addToRecent(city) {
+        // Avoid duplicates
+        const index = recentCities.indexOf(city);
+        if (index > -1) {
+            recentCities.splice(index, 1);
+        }
+        
+        recentCities.unshift(city);
+        
+        // Keep only 5 recent cities
+        if (recentCities.length > 5) {
+            recentCities.pop();
+        }
+        
+        // Saves to localStorage
+        localStorage.setItem('recentCities', JSON.stringify(recentCities));
+        
+        // Update UI
+        updateSearchHistory();
+        recentSearches.style.display = 'block';
+    }
+    
+    // Update search history UI
+    function updateSearchHistory() {
+        searchHistory.innerHTML = '';
+        recentCities.forEach(city => {
+            const span = document.createElement('span');
+            span.textContent = city;
+            span.onclick = () => {
+                cityInput.value = city;
+                getWeather();
+            };
+            searchHistory.appendChild(span);
+        });
+    }
+    
+    // Initialize the app when page loads
+    window.onload = initApp;
+  </script>
+</body>
+</html>
