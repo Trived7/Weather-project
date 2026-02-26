@@ -1,4 +1,4 @@
-# Weather-check
+# $\color{red}\Huge{\text{Weather-check}}$
 
 Created a beautiful weather finder website that displays current weather and 5-day forecast.
 It is a practice project for me, wrote with the HTML, CSS, JAVASCRIPT. i just wanted to create asimple one with limited but good wanted features, by keeping it simple. Took help from chatbots- learned from them and implemented them by myself (initially, I wanted to make an android app but got lazy 😅, but I'll in the future 😤)
